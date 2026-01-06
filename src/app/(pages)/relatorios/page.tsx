@@ -57,6 +57,9 @@ const formatCurrency = (value: number) =>
 const formatNumber = (value: number) =>
   new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(value);
 
+const formatPercentage = (value: number) =>
+  new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(value);
+
 const parseDate = (value?: string, isEnd = false) => {
   if (!value) return null;
   return new Date(`${value}T${isEnd ? "23:59:59" : "00:00:00"}`);
@@ -156,6 +159,60 @@ export default function RelatoriosPage() {
     };
   }, [filteredServicos]);
 
+  const servicosPorEquipamento = useMemo(() => {
+    const agrupado = new Map<
+      string,
+      { equipamentoId: string; totalCusto: number; totalServicos: number }
+    >();
+    filteredServicos.forEach((item) => {
+      const entry = agrupado.get(item.equipamento_id) ?? {
+        equipamentoId: item.equipamento_id,
+        totalCusto: 0,
+        totalServicos: 0
+      };
+      entry.totalCusto += item.custo;
+      entry.totalServicos += 1;
+      agrupado.set(item.equipamento_id, entry);
+    });
+    return Array.from(agrupado.values())
+      .map((entry) => ({
+        ...entry,
+        custoMedio: entry.totalServicos > 0 ? entry.totalCusto / entry.totalServicos : 0
+      }))
+      .sort((a, b) => b.totalCusto - a.totalCusto);
+  }, [filteredServicos]);
+
+  const servicosPorTipo = useMemo(() => {
+    const agrupado = new Map<
+      string,
+      { tipoId: string; totalCusto: number; totalServicos: number }
+    >();
+    filteredServicos.forEach((item) => {
+      const entry = agrupado.get(item.tipo_servico_id) ?? {
+        tipoId: item.tipo_servico_id,
+        totalCusto: 0,
+        totalServicos: 0
+      };
+      entry.totalCusto += item.custo;
+      entry.totalServicos += 1;
+      agrupado.set(item.tipo_servico_id, entry);
+    });
+    return Array.from(agrupado.values())
+      .map((entry) => ({
+        ...entry,
+        custoMedio: entry.totalServicos > 0 ? entry.totalCusto / entry.totalServicos : 0
+      }))
+      .sort((a, b) => b.totalCusto - a.totalCusto);
+  }, [filteredServicos]);
+
+  const servicosPorVeiculo = useMemo(() => {
+    const totalServicos = filteredServicos.length;
+    return servicosPorEquipamento.map((entry) => ({
+      ...entry,
+      participacao: totalServicos > 0 ? (entry.totalServicos / totalServicos) * 100 : 0
+    }));
+  }, [filteredServicos.length, servicosPorEquipamento]);
+
   const abastecimentoIndicadores = useMemo(() => {
     const totalLitros = filteredAbastecimentos.reduce((acc, item) => acc + item.litros, 0);
     const totalValor = filteredAbastecimentos.reduce((acc, item) => acc + item.valor_total, 0);
@@ -165,6 +222,29 @@ export default function RelatoriosPage() {
       totalValor
     };
   }, [filteredAbastecimentos]);
+
+  const kpisGerais = useMemo(() => {
+    const custoServicos = servicoIndicadores.totalCusto;
+    const custoAbastecimento = abastecimentoIndicadores.totalValor;
+    const custoTotal = custoServicos + custoAbastecimento;
+    const veiculoMaiorCusto = servicosPorEquipamento[0];
+    const tipoMaisCaro = servicosPorTipo[0];
+    const veiculoMaisServicos = servicosPorVeiculo[0];
+    return {
+      custoServicos,
+      custoAbastecimento,
+      custoTotal,
+      veiculoMaiorCusto,
+      tipoMaisCaro,
+      veiculoMaisServicos
+    };
+  }, [
+    abastecimentoIndicadores.totalValor,
+    servicoIndicadores.totalCusto,
+    servicosPorEquipamento,
+    servicosPorTipo,
+    servicosPorVeiculo
+  ]);
 
   const handleClearFilters = () => {
     setStartDateInput("");
@@ -223,6 +303,227 @@ export default function RelatoriosPage() {
               </button>
             </div>
           </div>
+        </SectionCard>
+
+        <SectionCard title="KPIs gerais">
+          {loading ? (
+            <p>Carregando...</p>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm text-slate-500">Custo total de serviços</p>
+                <p className="text-2xl font-semibold">{formatCurrency(kpisGerais.custoServicos)}</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm text-slate-500">Custo total de abastecimentos</p>
+                <p className="text-2xl font-semibold">
+                  {formatCurrency(kpisGerais.custoAbastecimento)}
+                </p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm text-slate-500">Custo total operacional</p>
+                <p className="text-2xl font-semibold">{formatCurrency(kpisGerais.custoTotal)}</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm text-slate-500">Veículo com maior custo</p>
+                <p className="text-lg font-semibold">
+                  {kpisGerais.veiculoMaiorCusto
+                    ? `${
+                        maps.equipamentos.get(kpisGerais.veiculoMaiorCusto.equipamentoId)?.codigo ??
+                        kpisGerais.veiculoMaiorCusto.equipamentoId
+                      } - ${formatCurrency(kpisGerais.veiculoMaiorCusto.totalCusto)}`
+                    : "Sem dados"}
+                </p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm text-slate-500">Tipo de serviço mais caro</p>
+                <p className="text-lg font-semibold">
+                  {kpisGerais.tipoMaisCaro
+                    ? `${
+                        maps.tipos.get(kpisGerais.tipoMaisCaro.tipoId)?.nome ??
+                        kpisGerais.tipoMaisCaro.tipoId
+                      } - ${formatCurrency(kpisGerais.tipoMaisCaro.totalCusto)}`
+                    : "Sem dados"}
+                </p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm text-slate-500">Veículo com mais serviços</p>
+                <p className="text-lg font-semibold">
+                  {kpisGerais.veiculoMaisServicos
+                    ? `${
+                        maps.equipamentos.get(kpisGerais.veiculoMaisServicos.equipamentoId)
+                          ?.codigo ?? kpisGerais.veiculoMaisServicos.equipamentoId
+                      } - ${kpisGerais.veiculoMaisServicos.totalServicos} serviços`
+                    : "Sem dados"}
+                </p>
+              </div>
+            </div>
+          )}
+        </SectionCard>
+
+        <SectionCard title="Custo por veículo">
+          {loading ? (
+            <p>Carregando...</p>
+          ) : (
+            <div className="grid gap-4">
+              <div className="flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  className="border border-slate-200"
+                  onClick={() => {
+                    const rows = servicosPorEquipamento.map((item) => {
+                      const equip = maps.equipamentos.get(item.equipamentoId);
+                      return {
+                        Veiculo: equip
+                          ? `${equip.codigo} - ${equip.descricao}`
+                          : item.equipamentoId,
+                        "Total de serviços": item.totalServicos,
+                        "Custo total": item.totalCusto,
+                        "Custo médio": item.custoMedio
+                      };
+                    });
+                    exportToExcel(
+                      rows,
+                      ["Veiculo", "Total de serviços", "Custo total", "Custo médio"],
+                      "relatorio-custo-por-veiculo"
+                    );
+                  }}
+                >
+                  Exportar para Excel
+                </button>
+              </div>
+              <DataTable
+                data={servicosPorEquipamento}
+                columns={[
+                  {
+                    header: "Veículo",
+                    accessorKey: "equipamentoId",
+                    cell: (info) => {
+                      const equip = maps.equipamentos.get(info.getValue() as string);
+                      return equip ? `${equip.codigo} - ${equip.descricao}` : info.getValue();
+                    }
+                  },
+                  { accessorKey: "totalServicos", header: "Total de serviços" },
+                  {
+                    accessorKey: "totalCusto",
+                    header: "Custo total",
+                    cell: (info) => formatCurrency(Number(info.getValue() || 0))
+                  },
+                  {
+                    accessorKey: "custoMedio",
+                    header: "Custo médio",
+                    cell: (info) => formatCurrency(Number(info.getValue() || 0))
+                  }
+                ]}
+              />
+            </div>
+          )}
+        </SectionCard>
+
+        <SectionCard title="Custo por serviço">
+          {loading ? (
+            <p>Carregando...</p>
+          ) : (
+            <div className="grid gap-4">
+              <div className="flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  className="border border-slate-200"
+                  onClick={() => {
+                    const rows = servicosPorTipo.map((item) => {
+                      return {
+                        "Tipo de serviço": maps.tipos.get(item.tipoId)?.nome ?? item.tipoId,
+                        "Total de serviços": item.totalServicos,
+                        "Custo total": item.totalCusto,
+                        "Custo médio": item.custoMedio
+                      };
+                    });
+                    exportToExcel(
+                      rows,
+                      ["Tipo de serviço", "Total de serviços", "Custo total", "Custo médio"],
+                      "relatorio-custo-por-servico"
+                    );
+                  }}
+                >
+                  Exportar para Excel
+                </button>
+              </div>
+              <DataTable
+                data={servicosPorTipo}
+                columns={[
+                  {
+                    header: "Tipo de serviço",
+                    accessorKey: "tipoId",
+                    cell: (info) => maps.tipos.get(info.getValue() as string)?.nome ?? info.getValue()
+                  },
+                  { accessorKey: "totalServicos", header: "Total de serviços" },
+                  {
+                    accessorKey: "totalCusto",
+                    header: "Custo total",
+                    cell: (info) => formatCurrency(Number(info.getValue() || 0))
+                  },
+                  {
+                    accessorKey: "custoMedio",
+                    header: "Custo médio",
+                    cell: (info) => formatCurrency(Number(info.getValue() || 0))
+                  }
+                ]}
+              />
+            </div>
+          )}
+        </SectionCard>
+
+        <SectionCard title="Serviços por veículo">
+          {loading ? (
+            <p>Carregando...</p>
+          ) : (
+            <div className="grid gap-4">
+              <div className="flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  className="border border-slate-200"
+                  onClick={() => {
+                    const rows = servicosPorVeiculo.map((item) => {
+                      const equip = maps.equipamentos.get(item.equipamentoId);
+                      return {
+                        Veiculo: equip
+                          ? `${equip.codigo} - ${equip.descricao}`
+                          : item.equipamentoId,
+                        "Total de serviços": item.totalServicos,
+                        "Participação (%)": formatPercentage(item.participacao)
+                      };
+                    });
+                    exportToExcel(
+                      rows,
+                      ["Veiculo", "Total de serviços", "Participação (%)"],
+                      "relatorio-servicos-por-veiculo"
+                    );
+                  }}
+                >
+                  Exportar para Excel
+                </button>
+              </div>
+              <DataTable
+                data={servicosPorVeiculo}
+                columns={[
+                  {
+                    header: "Veículo",
+                    accessorKey: "equipamentoId",
+                    cell: (info) => {
+                      const equip = maps.equipamentos.get(info.getValue() as string);
+                      return equip ? `${equip.codigo} - ${equip.descricao}` : info.getValue();
+                    }
+                  },
+                  { accessorKey: "totalServicos", header: "Total de serviços" },
+                  {
+                    accessorKey: "participacao",
+                    header: "Participação",
+                    cell: (info) => `${formatPercentage(Number(info.getValue() || 0))}%`
+                  }
+                ]}
+              />
+            </div>
+          )}
         </SectionCard>
 
         <SectionCard title="Horímetro">
