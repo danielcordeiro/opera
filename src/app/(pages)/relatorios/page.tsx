@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 import PageShell from "@/components/PageShell";
 import SectionCard from "@/components/SectionCard";
 import DataTable from "@/components/DataTable";
@@ -170,6 +171,31 @@ export default function RelatoriosPage() {
     setEndDateInput("");
   };
 
+  const buildFileName = (base: string) => {
+    const parts = [base];
+    if (startDateInput) {
+      parts.push(`de-${startDateInput}`);
+    }
+    if (endDateInput) {
+      parts.push(`ate-${endDateInput}`);
+    }
+    return parts.join("-");
+  };
+
+  const exportToExcel = (
+    rows: Array<Record<string, string | number | null>>,
+    headers: string[],
+    baseFileName: string
+  ) => {
+    const worksheet = XLSX.utils.json_to_sheet(rows, { header: headers });
+    if (rows.length === 0) {
+      XLSX.utils.sheet_add_aoa(worksheet, [headers], { origin: "A1" });
+    }
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Relatorio");
+    XLSX.writeFile(workbook, `${buildFileName(baseFileName)}.xlsx`);
+  };
+
   return (
     <PageShell>
       <div className="grid gap-6">
@@ -222,6 +248,33 @@ export default function RelatoriosPage() {
                   </p>
                 </div>
               </div>
+              <div className="flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  className="border border-slate-200"
+                  onClick={() => {
+                    const rows = filteredHorimetros.map((item) => {
+                      const equip = maps.equipamentos.get(item.equipamento_id);
+                      return {
+                        Equipamento: equip
+                          ? `${equip.codigo} - ${equip.descricao}`
+                          : item.equipamento_id,
+                        Data: item.data_referencia,
+                        Leitura: item.leitura,
+                        Horas: item.horas_trabalhadas ?? null,
+                        "Observação": item.observacao ?? null
+                      };
+                    });
+                    exportToExcel(
+                      rows,
+                      ["Equipamento", "Data", "Leitura", "Horas", "Observação"],
+                      "relatorio-horimetros"
+                    );
+                  }}
+                >
+                  Exportar para Excel
+                </button>
+              </div>
               <DataTable
                 data={filteredHorimetros}
                 columns={[
@@ -269,6 +322,36 @@ export default function RelatoriosPage() {
                     {formatCurrency(servicoIndicadores.mediaCusto)}
                   </p>
                 </div>
+              </div>
+              <div className="flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  className="border border-slate-200"
+                  onClick={() => {
+                    const rows = filteredServicos.map((item) => {
+                      const equip = maps.equipamentos.get(item.equipamento_id);
+                      return {
+                        Equipamento: equip
+                          ? `${equip.codigo} - ${equip.descricao}`
+                          : item.equipamento_id,
+                        Tipo: maps.tipos.get(item.tipo_servico_id)?.nome ?? item.tipo_servico_id,
+                        Fornecedor: item.fornecedor_id
+                          ? maps.fornecedores.get(item.fornecedor_id)?.nome ?? item.fornecedor_id
+                          : null,
+                        Data: item.data_servico,
+                        "Descrição": item.descricao,
+                        Custo: item.custo
+                      };
+                    });
+                    exportToExcel(
+                      rows,
+                      ["Equipamento", "Tipo", "Fornecedor", "Data", "Descrição", "Custo"],
+                      "relatorio-servicos"
+                    );
+                  }}
+                >
+                  Exportar para Excel
+                </button>
               </div>
               <DataTable
                 data={filteredServicos}
@@ -329,6 +412,33 @@ export default function RelatoriosPage() {
                     {formatCurrency(abastecimentoIndicadores.totalValor)}
                   </p>
                 </div>
+              </div>
+              <div className="flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  className="border border-slate-200"
+                  onClick={() => {
+                    const rows = filteredAbastecimentos.map((item) => {
+                      const equip = maps.equipamentos.get(item.equipamento_id);
+                      return {
+                        Equipamento: equip
+                          ? `${equip.codigo} - ${equip.descricao}`
+                          : item.equipamento_id,
+                        Fornecedor: maps.fornecedores.get(item.fornecedor_id)?.nome ?? item.fornecedor_id,
+                        Data: item.data_abastecimento,
+                        Litros: item.litros,
+                        Valor: item.valor_total
+                      };
+                    });
+                    exportToExcel(
+                      rows,
+                      ["Equipamento", "Fornecedor", "Data", "Litros", "Valor"],
+                      "relatorio-abastecimentos"
+                    );
+                  }}
+                >
+                  Exportar para Excel
+                </button>
               </div>
               <DataTable
                 data={filteredAbastecimentos}
